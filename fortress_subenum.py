@@ -1,16 +1,27 @@
 import socket # For DNS lookups
 import sys
+import argparse # New import for command-line arguments
 
-# A small list of common subdomains for testing
-# In a real scenario, you'd use a much larger wordlist from a file
-COMMON_SUBDOMAINS = [
-    "www", "mail", "ftp", "blog", "dev", "test", "admin",
-    "api", "webmail", "ns1", "ns2", "vpn", "m", "portal"
-]
+def load_wordlist(filepath):
+    """
+    Loads items from a wordlist file into a list.
+    """
+    try:
+        with open(filepath, 'r') as f:
+            # Read lines, strip whitespace (like newlines), and filter out empty lines
+            wordlist = [line.strip() for line in f if line.strip()]
+        print(f"[*] Loaded {len(wordlist)} items from wordlist: {filepath}")
+        return wordlist
+    except FileNotFoundError:
+        print(f"[!] Error: Wordlist file not found at '{filepath}'.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[!] An error occurred while loading wordlist: {e}")
+        sys.exit(1)
 
 def enumerate_subdomains(domain, subdomains_list):
     """
-    Attempts to resolve common subdomains for a given domain.
+    Attempts to resolve common subdomains for a given domain using a provided list.
     """
     print(f"\n[*] Starting subdomain enumeration for: {domain}")
     found_count = 0
@@ -23,32 +34,34 @@ def enumerate_subdomains(domain, subdomains_list):
             found_count += 1
         except socket.gaierror:
             # This means the subdomain does not resolve (i.e., doesn't exist)
-            # print(f"[-] Not found: {full_domain}") # Uncomment for verbose output
             pass # Suppress 'not found' messages for cleaner output
         except Exception as e:
             print(f"[!] An unexpected error occurred with {full_domain}: {e}")
-
+    
     if found_count == 0:
-        print(f"[*] No common subdomains found for {domain} from the provided list.")
+        print(f"[*] No subdomains found for {domain} from the provided list.")
     else:
         print(f"[*] Subdomain enumeration for {domain} completed. Found {found_count} subdomains.")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Tech Fortress Simple Subdomain Enumerator Module. This tool attempts to find common subdomains for a target domain using a wordlist.")
+    parser.add_argument("-d", "--domain", help="Target domain (e.g., example.com)", required=True)
+    parser.add_argument("-w", "--wordlist", help="Path to the subdomain wordlist file (e.g., /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt)", required=True)
+    
+    args = parser.parse_args()
+
     print("--- Tech Fortress Simple Subdomain Enumerator Module ---")
-    print("This tool attempts to find common subdomains for a target domain.")
-    print("Note: This uses a small built-in list. For real use, consider external wordlists.")
+    
+    target_domain = args.domain.strip()
+    wordlist_path = args.wordlist.strip()
 
-    while True:
-        target_domain = input("Enter target domain (e.g., example.com or 'exit' to quit): ").strip()
+    # Load the wordlist
+    subdomains_to_check = load_wordlist(wordlist_path)
 
-        if target_domain.lower() == 'exit':
-            print("[*] Exiting Tech Fortress Subdomain Enumerator. Goodbye!")
-            sys.exit(0)
+    if not subdomains_to_check:
+        print("[!] The provided wordlist is empty or could not be loaded. Exiting.")
+        sys.exit(1)
 
-        if not target_domain:
-            print("[!] No domain entered. Please try again.")
-            continue
-
-        enumerate_subdomains(target_domain, COMMON_SUBDOMAINS)
-        print("\n" + "="*50 + "\n") # Separator for multiple scans
+    enumerate_subdomains(target_domain, subdomains_to_check)
+    print("\n" + "="*50 + "\n") # Separator for scan
