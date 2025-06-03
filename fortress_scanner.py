@@ -1,68 +1,120 @@
-import socket  # Essential for network connections
-import sys     # For exiting the script
-import time    # For adding a small delay/timeout
+import socket
+import sys
+import threading
+import time
+import argparse # Needed if we want to run this standalone with args
 
-def check_port(target_ip, port, timeout=1):
-    """
-    Attempts to connect to a target IP on a specified port to check if it's open.
-    :param target_ip: The IP address or hostname to scan.
-    :param port: The port number to check.
-    :param timeout: How long to wait for a connection before timing out (in seconds).
-    :return: True if the port is open, False otherwise.
-    """
+# Global list to store open ports
+open_ports = []
+
+# Function to check if a single port is open
+def check_port(target, port, timeout):
     try:
-        # Create a new socket object
-        # AF_INET specifies IPv4 addressing
-        # SOCK_STREAM specifies TCP (for connection-oriented service)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout) # Set a timeout for the connection attempt
-
-        # Attempt to connect to the target and port
-        result = sock.connect_ex((target_ip, port)) # connect_ex returns 0 on success
-
+        sock.settimeout(timeout)
+        result = sock.connect_ex((target, port))
         if result == 0:
-            print(f"[+] Port {port} is OPEN on {target_ip}")
-            return True
-        else:
-            # print(f"[-] Port {port} is CLOSED or FILTERED on {target_ip} (Error code: {result})") # For debugging
-            return False
-
+            try:
+                service = socket.getservbyport(port)
+                print(f"[+] Port {port} ({service}) is OPEN")
+            except OSError:
+                print(f"[+] Port {port} is OPEN (unknown service)")
+            open_ports.append(port)
+        sock.close()
     except socket.gaierror:
-        print(f"[-] Hostname '{target_ip}' could not be resolved.")
-        return False
+        # This is handled at a higher level (scan_ports function)
+        pass
     except socket.error as e:
-        print(f"[-] Could not connect to {target_ip} on port {port}: {e}")
-        return False
+        # Handle other socket errors for individual port checks
+        # print(f"[-] Port {port} error: {e}") # Too verbose, uncomment for debugging
+        pass
     except Exception as e:
-        print(f"[!] An unexpected error occurred: {e}")
-        return False
-    finally:
-        sock.close() # Always close the socket
+        print(f"[!] An unexpected error occurred checking port {port}: {e}")
+
+# Main function to scan ports
+def scan_ports(target, port_range_list, timeout=1, max_threads=50):
+    """
+    Scans a list of ports on a target.
+    target: IP address or hostname
+    port_range_list: an iterable of ports (e.g., a list or a range)
+    timeout: socket timeout in seconds
+    max_threads: maximum number of concurrent threads
+    """
+    global open_ports # Clear previous scan results
+    open_ports = []
+
+    print(f"\n[*] Starting port scan for {target}...")
+    print(f"[*] Scanning ports: {min(port_range_list)} - {max(port_range_list) if port_range_list else 'N/A'}")
+
+    try:
+        # Resolve hostname to IP address once
+        target_ip = socket.gethostbyname(target)
+        print(f"[*] Resolved {target} to {target_ip}")
+    except socket.gaierror:
+        print(f"[!] Error: Could not resolve hostname '{target}'.")
+        return # Exit the function if target is unreachable
+
+    threads = []
+    for port in port_range_list:
+        thread = threading.Thread(target=check_port, args=(target_ip, port, timeout))
+        threads.append(thread)
+        thread.start()
+
+        # Limit active threads to avoid overwhelming the system or target
+        while threading.active_count() >= max_threads:
+            time.sleep(0.1) # Short delay to let threads finish
+
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
+
+    if open_ports:
+        print(f"\n[*] Scan completed. Found {len(open_ports)} open ports on {target_ip}:")
+        print(sorted(open_ports))
+    else:
+        print(f"\n[*] Scan completed. No open ports found on {target_ip} in the specified range.")
+
 
 if __name__ == "__main__":
-    print("--- Tech Fortress Port Scanner Module ---")
-    print("This tool checks if a specific port is open on a target host.")
+    print("--- Tech Fortress Enhanced Port Scanner Module ---")
+    print("This tool performs a multithreaded port scan on a target IP/hostname.")
 
-    while True:
-        target = input("Enter target IP address or hostname (e.g., 192.168.1.1 or example.com, or 'exit' to quit): ").strip()
+    parser = argparse.ArgumentParser(description="Multithreaded Port Scanner.")
+    parser.add_argument("-t", "--target", help="Target IP address or hostname (e.g., example.com)", required=True)
+    parser.add_argument("-p", "--ports", help="Port range (e.g., 1-1024) or specific ports (e.g., 22,80,443)", required=True)
+    parser.add_argument("--timeout", type=float, default=1.0, help="Socket timeout in seconds (default: 1.0)")
+    parser.add_argument("--threads", type=int, default=50, help="Maximum number of concurrent threads (default: 50)")
 
-        if target.lower() == 'exit':
-            print("[*] Exiting Tech Fortress Port Scanner. Goodbye!")
-            sys.exit(0)
+    args = parser.parse_args()
 
-        if not target:
-            print("[!] No target entered. Please try again.")
-            continue
+    # Parse ports argument
+    ports_to_scan = []
+    if '-' in args.ports:
+        try:
+            start_port, end_port = map(int, args.ports.split('-'))
+            ports_to_scan = list(range(start_port, end_port + 1))
+        except ValueError:
+            print("[!] Invalid port range format. Use 'START-END' (e.g., 1-1024).")
+            sys.exit(1)
+    else:
+        try:
+            ports_to_scan = [int(p) for p in args.ports.split(',')]
+        except ValueError:
+            print("[!] Invalid port list format. Use 'PORT1,PORT2' (e.g., 22,80,443).")
+            sys.exit(1)
 
-        port_input = input("Enter the port number to check (e.g., 80, 22, 443): ").strip()
-        if not port_input.isdigit():
-            print("[!] Invalid port number. Please enter a number.")
-            continue
-        port = int(port_input)
+    if not ports_to_scan:
+        print("[!] No valid ports to scan. Exiting.")
+        sys.exit(1)
 
-        if not (0 < port < 65536): # Ports range from 1 to 65535
-            print("[!] Port number must be between 1 and 65535.")
-            continue
+    # Remove duplicate ports and sort them
+    ports_to_scan = sorted(list(set(ports_to_scan)))
 
-        # Call the port check function
-        check_port(target, port)
+    # Validate port numbers
+    ports_to_scan = [p for p in ports_to_scan if 0 < p <= 65535]
+    if not ports_to_scan:
+        print("[!] No valid ports remaining after validation (ports must be 1-65535). Exiting.")
+        sys.exit(1)
+
+    scan_ports(args.target, ports_to_scan, args.timeout, args.threads)
+    print("\n" + "="*50 + "\n") # Separator for multiple scans
