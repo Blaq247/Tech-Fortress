@@ -14,6 +14,7 @@ try:
     from fortress_subenum import enumerate_subdomains, load_wordlist as load_subdomain_wordlist # Rename to avoid conflict
     from fortress_dirbuster import check_paths, load_wordlist as load_path_wordlist # Rename to avoid conflict
     from fortress_geolocate import geolocate_ip
+    from fortress_bannergrab import grab_banner # NEW IMPORT
 except ImportError as e:
     print(f"[!] Error importing a module: {e}")
     print("[!] Please ensure all 'fortress_*.py' files are in the same directory.")
@@ -32,7 +33,8 @@ def display_menu():
     print("3. Basic Web Info Gathering")
     print("4. Simple Subdomain Enumeration (with wordlist)")
     print("5. Basic Directory/File Existence Check (with wordlist)")
-    print("6. IP Geolocation Lookup")
+    print("6. Banner Grabbing") # NEW OPTION
+    print("7. IP Geolocation Lookup") # CORRECTED TYPO AND NUMBER
     print("0. Exit")
     print("="*50)
 
@@ -40,7 +42,7 @@ def main():
     """Main function to run the Tech Fortress toolkit."""
     while True:
         display_menu()
-        choice = input("Enter your choice (0-6): ").strip()
+        choice = input("Enter your choice (0-7): ").strip() # UPDATED RANGE
 
         if choice == '1':
             print("\n--- Host Discovery (Ping) ---")
@@ -54,10 +56,8 @@ def main():
             print("\n--- Port Scanning ---")
             target = input("Enter target IP or hostname: ").strip()
             if target:
-                # For simplicity, we'll use a common range or default for the main menu
-                # The dedicated scanner script allows custom ranges via argparse
                 print("Scanning common ports (20-1024)...")
-                scan_ports(target, range(20, 1025)) # Scan a common range
+                scan_ports(target, range(20, 1025))
             else:
                 print("[!] No target entered.")
 
@@ -76,7 +76,6 @@ def main():
                 print("[!] No domain entered.")
                 continue
 
-            # Default wordlist path for convenience in menu mode
             default_sub_wordlist = "/usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt"
             if not os.path.exists(default_sub_wordlist):
                 print(f"[!] Warning: Default subdomain wordlist not found at '{default_sub_wordlist}'.")
@@ -100,9 +99,9 @@ def main():
             target_url = input("Enter target base URL (e.g., http://example.com/): ").strip()
             if not target_url:
                 print("[!] No URL entered.")
-                continue
+                continue # CORRECTED: Added continue here for empty URL
 
-            # Default wordlist path for convenience in menu mode
+            # Moved this entire block INSIDE choice '5'
             default_dir_wordlist = "/usr/share/wordlists/seclists/Discovery/Web-Content/common.txt"
             if not os.path.exists(default_dir_wordlist):
                 print(f"[!] Warning: Default directory/file wordlist not found at '{default_dir_wordlist}'.")
@@ -121,7 +120,24 @@ def main():
             else:
                 print(f"[!] Directory/file wordlist not found at '{wordlist_path}'.")
 
+
         elif choice == '6':
+            print("\n--- Banner Grabbing ---")
+            target = input("Enter target IP or hostname (e.g., example.com): ").strip()
+            if not target:
+                print("[!] No target entered.")
+                continue
+            try:
+                port = int(input("Enter target port number (e.g., 80, 22): ").strip())
+                if not (0 < port <= 65535):
+                    print("[!] Invalid port number. Port must be between 1 and 65535.")
+                    continue
+            except ValueError:
+                print("[!] Invalid port number. Please enter an integer.")
+                continue # CORRECTED: Indentation for this continue
+            grab_banner(target, port) # This will now be reached
+
+        elif choice == '7':
             print("\n--- IP Geolocation Lookup ---")
             target_ip = input("Enter target IP address (e.g., 8.8.8.8): ").strip()
             if target_ip:
@@ -134,7 +150,7 @@ def main():
             sys.exit(0)
 
         else:
-            print("[!] Invalid choice. Please enter a number between 0 and 6.")
+            print("[!] Invalid choice. Please enter a number between 0 and 7.") # UPDATED RANGE
 
 if __name__ == "__main__":
     main()
